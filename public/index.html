@@ -1,44 +1,212 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta charset="UTF-8">
-<title>Web IDE Terminal</title>
+<meta charset="UTF-8" />
+<title>Web IDE Terminal (no local-run button)</title>
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/xterm/css/xterm.css" />
 <style>
-html, body { height: 100%; margin: 0; background: #000; }
-#terminal { width: 100%; height: 100%; }
+  html, body { height: 100%; margin: 0; background: #000; color: #ddd; font-family: system-ui, sans-serif; }
+  #container { display:flex; height:100vh; overflow:hidden; }
+  #explorer { width:220px; border-right:1px solid #333; background:#0b0b0b; color:#cfcfcf; overflow:auto; padding:8px; box-sizing:border-box; }
+  #main { flex:1; display:flex; flex-direction:column; min-width:0; }
+  #toolbar { height:40px; display:flex; gap:8px; align-items:center; padding:4px; background:#101010; color:#fff; }
+  #editor { flex:1 1 0; min-height:0; }         /* important: min-height:0 so flex child can shrink properly */
+  #terminal { height: 40vh; min-height: 120px; width:100%; }
+  .file { padding:6px; cursor:pointer; }
+  .file:hover { background:#202020; }
+  input, select { background:#111; color:#fff; border:1px solid #333; padding:6px; border-radius:4px; }
+  button { background:#1a73a8; color:white; border:0; padding:6px 8px; border-radius:4px; cursor:pointer; }
 </style>
 </head>
 <body>
-<div id="terminal"></div>
+<div id="container">
+  <div id="explorer">
+    <button id="btnRefresh">Refresh</button>
+    <div id="fileList"></div>
+    <hr />
+    <input id="newName" placeholder="new-folder or file name" />
+    <button id="btnNewFile">New File</button>
+    <button id="btnNewDir">New Dir</button>
+  </div>
 
+  <div id="main">
+    <div id="toolbar">
+      <select id="language">
+        <option value="63">JavaScript (node)</option>
+        <option value="71">Python</option>
+        <option value="50">C (gcc)</option>
+      </select>
+      <button id="btnSave">Save</button>
+      <button id="btnRunJudge0">Run (Judge0)</button>
+      <input id="stdin" placeholder="stdin (optional)" style="margin-left:8px;"/>
+    </div>
 
+    <div id="editor" tabindex="0"></div>
+    <div id="terminal" tabindex="0"></div>
+  </div>
+</div>
+
+<!-- Load xterm (UMD build) and its fit addon first -->
 <script src="https://cdn.jsdelivr.net/npm/xterm/lib/xterm.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/xterm-addon-fit/lib/xterm-addon-fit.js"></script>
+
+<!-- Monaco loader AFTER xterm, to avoid the AMD anonymous define conflict -->
+<script src="https://unpkg.com/monaco-editor@0.39.0/min/vs/loader.js"></script>
+
 <script>
-const term = new Terminal({ cursorBlink: true, fontSize: 14 });
-const fitAddon = new FitAddon.FitAddon();
-term.loadAddon(fitAddon);
-term.open(document.getElementById('terminal'));
-fitAddon.fit();
+(async function () {
+  const project = new URLSearchParams(window.location.search).get('project') || 'project1';
 
+  function getTerminalConstructor() {
+    if (typeof window.Terminal === 'function') return window.Terminal;
+    if (window.Terminal && typeof window.Terminal.Terminal === 'function') return window.Terminal.Terminal;
+    if (window.XTerm && typeof window.XTerm === 'function') return window.XTerm;
+    if (window.XTerm && window.XTerm.Terminal && typeof window.XTerm.Terminal === 'function') return window.XTerm.Terminal;
+    return null;
+  }
+  function getFitAddonConstructor() {
+    if (typeof window.FitAddon === 'function') return window.FitAddon;
+    if (window.FitAddon && typeof window.FitAddon.FitAddon === 'function') return window.FitAddon.FitAddon;
+    if (window.Fit && typeof window.Fit === 'function') return window.Fit;
+    return null;
+  }
 
-const project = new URLSearchParams(window.location.search).get('project') || 'project1';
-const ws = new WebSocket(`ws://${window.location.host}/term?project=${project}`);
+  const TermCtor = getTerminalConstructor();
+  const FitCtor = getFitAddonConstructor();
 
+  if (!TermCtor) {
+    console.error('xterm Terminal constructor not found.');
+    document.getElementById('terminal').textContent = 'Terminal load failed (see console).';
+    return;
+  }
 
-ws.onopen = () => term.write(`Connected to project: ${project}\r\n$ `);
-ws.onmessage = e => term.write(e.data);
-ws.onclose = () => term.write('\r\nConnection closed');
+  let term, fitAddon;
+  try { term = new TermCtor({ cursorBlink: true, fontSize: 14 }); }
+  catch (e) { console.error('Terminal ctor failed', e); document.getElementById('terminal').textContent = 'Terminal init failed'; return; }
 
+  if (FitCtor) {
+    try { fitAddon = new FitCtor(); if (typeof term.loadAddon === 'function') term.loadAddon(fitAddon); }
+    catch (e) { console.warn('Fit addon load failed:', e); }
+  }
 
-term.onData(d => ws.send(d));
+  term.open(document.getElementById('terminal'));
+  try { term.focus(); } catch(e) {}
+  if (fitAddon && typeof fitAddon.fit === 'function') { try { fitAddon.fit(); } catch(e) {} }
 
+  const wsProto = (location.protocol === 'https:') ? 'wss:' : 'ws:';
+  const wsUrl = `${wsProto}//${location.host}/term?project=${encodeURIComponent(project)}`;
+  const ws = new WebSocket(wsUrl);
 
-window.addEventListener('resize', () => {
-fitAddon.fit();
-ws.send(JSON.stringify({ type: 'resize', cols: term.cols, rows: term.rows }));
-});
+  ws.addEventListener('open', () => {
+    term.write(`\r\n\x1b[32mConnected to project: ${project}\x1b[0m\r\n$ `);
+    ws.send(JSON.stringify({ type: 'resize', cols: term.cols || 80, rows: term.rows || 24 }));
+  });
+  ws.addEventListener('message', ev => term.write(ev.data));
+  ws.addEventListener('close', () => term.write('\r\n\x1b[31mConnection closed\x1b[0m\r\n'));
+  ws.addEventListener('error', err => console.error('Terminal WS error', err));
+
+  if (typeof term.onData === 'function') term.onData(d => { if (ws.readyState === WebSocket.OPEN) ws.send(d); });
+  else if (typeof term.onKey === 'function') term.onKey(ev => { if (ws.readyState === WebSocket.OPEN) ws.send(ev.key); });
+
+  window.addEventListener('resize', () => {
+    if (fitAddon && typeof fitAddon.fit === 'function') { try { fitAddon.fit(); } catch(e) {} }
+    if (ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ type: 'resize', cols: term.cols || 80, rows: term.rows || 24 }));
+  });
+
+  // Monaco setup
+  require.config({ paths: { vs: 'https://unpkg.com/monaco-editor@0.39.0/min/vs' }});
+  require(['vs/editor/editor.main'], function () {
+    window.editor = monaco.editor.create(document.getElementById('editor'), {
+      value: '// select a file and open it from the explorer\\n',
+      language: 'javascript',
+      theme: 'vs-dark',
+      automaticLayout: true,
+      minimap: { enabled: false }
+    });
+    try { window.editor.focus(); } catch (e) {}
+    refreshExplorer().catch(err => console.warn('Explorer refresh failed:', err));
+  });
+
+  async function api(path, opts = {}) {
+    const res = await fetch(path, opts);
+    if (!res.ok) throw new Error(`API ${path} failed: ${res.status}`);
+    return res.json();
+  }
+
+  async function refreshExplorer() {
+    const json = await api(`/api/files?project=${encodeURIComponent(project)}`);
+    const list = document.getElementById('fileList');
+    list.innerHTML = '';
+    for (const it of json.items) {
+      const div = document.createElement('div');
+      div.className = 'file';
+      div.textContent = it.name + (it.isDir ? '/' : '');
+      div.onclick = () => { if (it.isDir) loadFolder(it.name); else loadFile(it.name); };
+      list.appendChild(div);
+    }
+  }
+
+  async function loadFolder(folderName) {
+    const json = await api(`/api/files?project=${encodeURIComponent(project)}&path=${encodeURIComponent(folderName)}`);
+    const list = document.getElementById('fileList');
+    list.innerHTML = `<div style="font-weight:bold">/${folderName}</div>`;
+    for (const it of json.items) {
+      const div = document.createElement('div');
+      div.className = 'file';
+      div.textContent = it.name + (it.isDir ? '/' : '');
+      div.onclick = () => { if (it.isDir) loadFolder(folderName + '/' + it.name); else loadFile(folderName + '/' + it.name); };
+      list.appendChild(div);
+    }
+  }
+
+  async function loadFile(relPath) {
+    const json = await api(`/api/file?project=${encodeURIComponent(project)}&path=${encodeURIComponent(relPath)}`);
+    window.currentFile = relPath;
+    const ext = relPath.split('.').pop();
+    const lang = ext === 'py' ? 'python' : (ext === 'c' ? 'c' : 'javascript');
+    if (window.editor) {
+      monaco.editor.setModelLanguage(window.editor.getModel(), lang);
+      window.editor.setValue(json.content);
+      try { window.editor.focus(); } catch(e) {}
+    } else {
+      alert('Editor not ready');
+    }
+  }
+
+  document.getElementById('btnRefresh').onclick = () => refreshExplorer().catch(e=>console.warn(e));
+  document.getElementById('btnNewFile').onclick = async () => {
+    const name = document.getElementById('newName').value.trim();
+    if (!name) return alert('Enter name');
+    await api('/api/file', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ project, path: name, content: '' }) });
+    refreshExplorer();
+  };
+  document.getElementById('btnNewDir').onclick = async () => {
+    const name = document.getElementById('newName').value.trim();
+    if (!name) return alert('Enter name');
+    await api('/api/mkdir', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ project, path: name }) });
+    refreshExplorer();
+  };
+  document.getElementById('btnSave').onclick = async () => {
+    if (!window.currentFile) return alert('Open a file first');
+    const content = window.editor.getValue();
+    await api('/api/file', { method: 'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ project, path: window.currentFile, content }) });
+    // alert('Saved');
+    refreshExplorer();
+  };
+
+  // Judge0 run button remains
+  document.getElementById('btnRunJudge0').onclick = async () => {
+    if (!window.currentFile) return alert('Open a file first');
+    const source = window.editor.getValue();
+    const language_id = document.getElementById('language').value;
+    const stdin = document.getElementById('stdin').value || '';
+    const result = await api('/api/run-judge0', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ project, source, language_id, stdin }) });
+    const output = (result.compile_output || '') + (result.stdout || '') + (result.stderr || '');
+    if (ws.readyState === WebSocket.OPEN) ws.send(`echo -e ${JSON.stringify(output)}\n`);
+    // alert('Judge0 finished. Check terminal and console for output.');
+    console.log(result);
+  };
+})();
 </script>
 </body>
 </html>
