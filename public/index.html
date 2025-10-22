@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Web IDE Terminal</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/xterm/css/xterm.css" />
+<style>
+html, body { height: 100%; margin: 0; background: #000; }
+#terminal { width: 100%; height: 100%; }
+</style>
+</head>
+<body>
+<div id="terminal"></div>
+
+
+<script src="https://cdn.jsdelivr.net/npm/xterm/lib/xterm.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/xterm-addon-fit/lib/xterm-addon-fit.js"></script>
+<script>
+const term = new Terminal({ cursorBlink: true, fontSize: 14 });
+const fitAddon = new FitAddon.FitAddon();
+term.loadAddon(fitAddon);
+term.open(document.getElementById('terminal'));
+fitAddon.fit();
+
+
+const project = new URLSearchParams(window.location.search).get('project') || 'project1';
+const ws = new WebSocket(`ws://${window.location.host}/term?project=${project}`);
+
+
+ws.onopen = () => term.write(`Connected to project: ${project}\r\n$ `);
+ws.onmessage = e => term.write(e.data);
+ws.onclose = () => term.write('\r\nConnection closed');
+
+
+term.onData(d => ws.send(d));
+
+
+window.addEventListener('resize', () => {
+fitAddon.fit();
+ws.send(JSON.stringify({ type: 'resize', cols: term.cols, rows: term.rows }));
+});
+</script>
+</body>
+</html>
