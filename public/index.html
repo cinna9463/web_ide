@@ -1,212 +1,524 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta charset="UTF-8" />
-<title>Web IDE Terminal (no local-run button)</title>
-<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/xterm/css/xterm.css" />
-<style>
-  html, body { height: 100%; margin: 0; background: #000; color: #ddd; font-family: system-ui, sans-serif; }
-  #container { display:flex; height:100vh; overflow:hidden; }
-  #explorer { width:220px; border-right:1px solid #333; background:#0b0b0b; color:#cfcfcf; overflow:auto; padding:8px; box-sizing:border-box; }
-  #main { flex:1; display:flex; flex-direction:column; min-width:0; }
-  #toolbar { height:40px; display:flex; gap:8px; align-items:center; padding:4px; background:#101010; color:#fff; }
-  #editor { flex:1 1 0; min-height:0; }         /* important: min-height:0 so flex child can shrink properly */
-  #terminal { height: 40vh; min-height: 120px; width:100%; }
-  .file { padding:6px; cursor:pointer; }
-  .file:hover { background:#202020; }
-  input, select { background:#111; color:#fff; border:1px solid #333; padding:6px; border-radius:4px; }
-  button { background:#1a73a8; color:white; border:0; padding:6px 8px; border-radius:4px; cursor:pointer; }
-</style>
+  <meta charset="UTF-8" />
+  <title>Web IDE Terminal — workspace root</title>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/xterm/css/xterm.css" />
+  <style>
+    html,
+    body {
+      height: 100%;
+      margin: 0;
+      background: #000;
+      color: #ddd;
+      font-family: system-ui, sans-serif;
+    }
+
+    #container {
+      display: flex;
+      height: 100vh;
+      overflow: hidden;
+    }
+
+    #explorer {
+      width: 260px;
+      border-right: 1px solid #333;
+      background: #0b0b0b;
+      color: #cfcfcf;
+      overflow: auto;
+      padding: 8px;
+      box-sizing: border-box;
+    }
+
+    #main {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      min-width: 0;
+    }
+
+    #toolbar {
+      height: 40px;
+      display: flex;
+      gap: 8px;
+      align-items: center;
+      padding: 4px;
+      background: #101010;
+      color: #fff;
+    }
+
+    #editor {
+      flex: 1 1 0;
+      min-height: 0;
+    }
+
+    #terminal {
+      height: 40vh;
+      min-height: 120px;
+      width: 100%;
+    }
+
+    .file {
+      padding: 6px;
+      cursor: pointer;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .file:hover {
+      background: #202020;
+    }
+
+    input,
+    select {
+      background: #111;
+      color: #fff;
+      border: 1px solid #333;
+      padding: 6px;
+      border-radius: 4px;
+    }
+
+    button {
+      background: #1a73a8;
+      color: white;
+      border: 0;
+      padding: 6px 8px;
+      border-radius: 4px;
+      cursor: pointer;
+    }
+
+    #breadcrumb {
+      color: #9aa0a6;
+      font-size: 13px;
+      margin-bottom: 6px;
+    }
+
+    pre#outputBox {
+      background: #111;
+      color: #0f0;
+      padding: 8px;
+      max-height: 180px;
+      overflow: auto;
+      
+    }
+
+
+    /* === Layout core === */
+    #container {
+      display: flex;
+      height: 100vh;
+      overflow: hidden;
+    }
+
+    #explorer {
+      width: 250px;
+      background: #111;
+      color: white;
+      overflow-y: auto;
+      flex-shrink: 0;
+      border-right: 1px solid #333;
+    }
+
+    #main {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+
+    /* === Toolbar === */
+    #toolbar {
+      display: flex;
+      align-items: center;
+      background: #222;
+      padding: 6px;
+      border-bottom: 1px solid #333;
+    }
+
+    /* === Editor + Output side by side === */
+    #workArea {
+      flex: 1;
+      display: flex;
+      overflow: hidden;
+    }
+
+    #editor {
+      flex: 1;
+      min-width: 0;
+      min-height: 300px;
+    }
+
+    #sidePanel {
+      width: 35%;
+      background: #111;
+      display: flex;
+      flex-direction: column;
+      border-left: 1px solid #333;
+      overflow: hidden;
+    }
+
+    #stdin {
+      flex: 0 0 100px;
+      resize: vertical;
+      background: #222;
+      color: #0f0;
+      border: none;
+      border-bottom: 1px solid #333;
+      font-family: monospace;
+      padding: 6px;
+      margin: 0;
+    }
+
+    #judgeOutputBox {
+      flex: 1;
+      overflow-y: auto;
+      color: #0f0;
+      padding: 6px;
+      font-family: monospace;
+    }
+
+    #judgeOutputBox h3 {
+      color: #0ff;
+      font-size: 14px;
+      margin: 0 0 6px 0;
+    }
+
+    #terminalWrapper {
+  position: relative;
+  width: 100%;
+  height: 250px; /* default height */
+  min-height: 100px;
+  max-height: 70vh;
+  display: flex;
+  flex-direction: column;
+  border-top: 1px solid #333;
+  background: #000;
+  overflow: hidden;
+}
+
+#terminalResizeHandle {
+  height: 6px;
+  background: #444;
+  cursor: ns-resize;
+  border-top: 1px solid #222;
+  border-bottom: 1px solid #222;
+}
+#terminalResizeHandle:hover {
+  background: #666;
+}
+
+    /* === Resizable terminal === */
+  
+    #terminalContainer {
+      resize: vertical;
+      overflow: hidden;
+      min-height: 120px;
+      height: 200px;
+      max-height: 60vh;
+      border-top: 1px solid #333;
+      background: #000;
+      flex: 1;
+      width: 100%;
+    }
+
+    #terminal {
+      width: 100%;
+      height: 100%;
+    }
+  </style>
 </head>
 <body>
-<div id="container">
-  <div id="explorer">
-    <button id="btnRefresh">Refresh</button>
-    <div id="fileList"></div>
-    <hr />
-    <input id="newName" placeholder="new-folder or file name" />
-    <button id="btnNewFile">New File</button>
-    <button id="btnNewDir">New Dir</button>
-  </div>
-
-  <div id="main">
-    <div id="toolbar">
-      <select id="language">
-        <option value="63">JavaScript (node)</option>
-        <option value="71">Python</option>
-        <option value="50">C (gcc)</option>
+  <div id="container">
+    <!-- === LEFT EXPLORER === -->
+    <div id="explorer">
+      <div id="breadcrumb">/</div>
+      <div style="display:flex; gap:6px; margin-bottom:6px;">
+        <button id="btnUp">Up</button>
+        <button id="btnRefresh">Refresh</button>
+      </div>
+      <div id="fileList"></div>
+      <hr />
+      <input id="newName" placeholder="name (file or dir)" />
+      <select id="newType">
+        <option value="file">File</option>
+        <option value="dir">Directory</option>
       </select>
-      <button id="btnSave">Save</button>
-      <button id="btnRunJudge0">Run (Judge0)</button>
-      <input id="stdin" placeholder="stdin (optional)" style="margin-left:8px;"/>
+      <button id="btnCreate">Create</button>
     </div>
 
-    <div id="editor" tabindex="0"></div>
-    <div id="terminal" tabindex="0"></div>
+    <!-- === MAIN WORK AREA === -->
+    <div id="main">
+      <div id="toolbar">
+        <select id="language">
+          <option value="63">JavaScript (node)</option>
+          <option value="71">Python</option>
+          <option value="50">C (gcc)</option>
+          <option value="62">Java</option>
+          <option value="54">C++ (gcc)</option>
+          <option value="78">Go</option>
+          <option value="91">Ruby</option>
+          <option value="52">C# (mono)</option>
+          <option value="60">PHP</option>
+          <option value="68">Rust</option>
+        </select>
+        <button id="btnSave">Save</button>
+        <button id="btnRunJudge0">Run (Judge0)</button>
+        <div style="flex:1"></div>
+        <div class="small" id="rootInfo"></div>
+      </div>
+
+      <!-- FLEX LAYOUT FOR EDITOR + OUTPUT -->
+      <div id="workArea">
+        <div id="editor"></div>
+        <div id="sidePanel">
+          <textarea id="stdin" placeholder="Enter input here (multi-line supported)"></textarea>
+          <div id="judgeOutputBox">
+            <h3>Output</h3>
+            <pre id="outputBox">(no output)</pre>
+          </div>
+        </div>
+      </div>
+
+      <div id="terminalWrapper">
+        <div id="terminalResizeHandle"></div>
+          <div id="terminalContainer">
+          <div id="terminal" tabindex="0"></div>
+        </div>
+      </div>
+
+    </div>
   </div>
-</div>
 
-<!-- Load xterm (UMD build) and its fit addon first -->
-<script src="https://cdn.jsdelivr.net/npm/xterm/lib/xterm.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/xterm-addon-fit/lib/xterm-addon-fit.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/xterm/lib/xterm.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/xterm-addon-fit/lib/xterm-addon-fit.js"></script>
+  <script src="https://unpkg.com/monaco-editor@0.39.0/min/vs/loader.js"></script>
 
-<!-- Monaco loader AFTER xterm, to avoid the AMD anonymous define conflict -->
-<script src="https://unpkg.com/monaco-editor@0.39.0/min/vs/loader.js"></script>
+  <script>
+    (async function () {
+      // workspace-level (no projects)
+      let currentDir = '.'; // relative to WORKSPACE_ROOT
+      // show server root (optional)
+      try {
+        const r = await fetch('/api/root'); const jr = await r.json();
+        document.getElementById('rootInfo').textContent = jr.root;
+      } catch (e) { /* ignore */}
 
-<script>
-(async function () {
-  const project = new URLSearchParams(window.location.search).get('project') || 'project1';
+      // terminal init (robust)
+      function getTerminalCtor() {if (typeof window.Terminal === 'function') return window.Terminal; if (window.Terminal && typeof window.Terminal.Terminal === 'function') return window.Terminal.Terminal; return null;}
+      function getFitCtor() {if (typeof window.FitAddon === 'function') return window.FitAddon; if (window.FitAddon && typeof window.FitAddon.FitAddon === 'function') return window.FitAddon.FitAddon; return null;}
+      const TermCtor = getTerminalCtor(); const FitCtor = getFitCtor();
+      if (!TermCtor) {document.getElementById('terminal').textContent = 'Terminal failed to load'; return;}
+      const term = new (TermCtor)({cursorBlink: true, fontSize: 14});
+      const fit = FitCtor ? new (FitCtor)() : null;
+      if (fit && typeof term.loadAddon === 'function') term.loadAddon(fit);
+      term.open(document.getElementById('terminal')); try {term.focus();} catch { }
+      if (fit && typeof fit.fit === 'function') try {fit.fit();} catch { }
 
-  function getTerminalConstructor() {
-    if (typeof window.Terminal === 'function') return window.Terminal;
-    if (window.Terminal && typeof window.Terminal.Terminal === 'function') return window.Terminal.Terminal;
-    if (window.XTerm && typeof window.XTerm === 'function') return window.XTerm;
-    if (window.XTerm && window.XTerm.Terminal && typeof window.XTerm.Terminal === 'function') return window.XTerm.Terminal;
-    return null;
-  }
-  function getFitAddonConstructor() {
-    if (typeof window.FitAddon === 'function') return window.FitAddon;
-    if (window.FitAddon && typeof window.FitAddon.FitAddon === 'function') return window.FitAddon.FitAddon;
-    if (window.Fit && typeof window.Fit === 'function') return window.Fit;
-    return null;
-  }
+      // WebSocket function to (re)connect terminal to currentDir
+      let ws = null;
+      let dataListener = null;
+      let keyListener = null;
 
-  const TermCtor = getTerminalConstructor();
-  const FitCtor = getFitAddonConstructor();
+      function connectTerm() {
+        // Close previous ws if open
+        if (ws && ws.readyState === WebSocket.OPEN) {
+          try {ws.close();} catch (e) { }
+        }
 
-  if (!TermCtor) {
-    console.error('xterm Terminal constructor not found.');
-    document.getElementById('terminal').textContent = 'Terminal load failed (see console).';
-    return;
-  }
+        try {
+          if (dataListener && typeof dataListener.dispose === 'function') dataListener.dispose();
+          if (keyListener && typeof keyListener.dispose === 'function') keyListener.dispose();
+        } catch (e) {console.warn('Dispose failed', e);}
+        dataListener = null;
+        keyListener = null;
 
-  let term, fitAddon;
-  try { term = new TermCtor({ cursorBlink: true, fontSize: 14 }); }
-  catch (e) { console.error('Terminal ctor failed', e); document.getElementById('terminal').textContent = 'Terminal init failed'; return; }
+        const wsProto = (location.protocol === 'https:') ? 'wss:' : 'ws:';
+        const wsUrl = `${wsProto}//${location.host}/term?path=${encodeURIComponent(currentDir)}`;
+        ws = new WebSocket(wsUrl);
+        ws.addEventListener('open', () => {
+          term.write(`\r\n\x1b[32mConnected at /${currentDir}\x1b[0m\r\n$ `);
+          if (ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify({type: 'resize', cols: term.cols, rows: term.rows}));
+        });
+        ws.addEventListener('message', ev => term.write(ev.data));
+        ws.addEventListener('close', () => term.write('\r\n\x1b[31mConnection closed\x1b[0m\r\n'));
+        ws.addEventListener('error', e => console.error('WS err', e));
+        // send keys
+        if (typeof term.onData === 'function') {
+          dataListener = term.onData(d => {if (ws && ws.readyState === WebSocket.OPEN) ws.send(d);});
+        } else if (typeof term.onKey === 'function') {
+          // onKey returns disposable too
+          keyListener = term.onKey(ev => {if (ws && ws.readyState === WebSocket.OPEN) ws.send(ev.key);});
+        }
+        window.addEventListener('resize', () => {
+          if (fit && typeof fit.fit === 'function')
 
-  if (FitCtor) {
-    try { fitAddon = new FitCtor(); if (typeof term.loadAddon === 'function') term.loadAddon(fitAddon); }
-    catch (e) { console.warn('Fit addon load failed:', e); }
-  }
+            try {
+              fit.fit();
+            } catch { }
 
-  term.open(document.getElementById('terminal'));
-  try { term.focus(); } catch(e) {}
-  if (fitAddon && typeof fitAddon.fit === 'function') { try { fitAddon.fit(); } catch(e) {} }
+          if (ws && ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify({type: 'resize', cols: term.cols, rows: term.rows}));
+        });
+      }
 
-  const wsProto = (location.protocol === 'https:') ? 'wss:' : 'ws:';
-  const wsUrl = `${wsProto}//${location.host}/term?project=${encodeURIComponent(project)}`;
-  const ws = new WebSocket(wsUrl);
+      connectTerm();
 
-  ws.addEventListener('open', () => {
-    term.write(`\r\n\x1b[32mConnected to project: ${project}\x1b[0m\r\n$ `);
-    ws.send(JSON.stringify({ type: 'resize', cols: term.cols || 80, rows: term.rows || 24 }));
+      // Monaco editor
+      require.config({paths: {vs: 'https://unpkg.com/monaco-editor@0.39.0/min/vs'}});
+      let editor;
+      require(['vs/editor/editor.main'], () => {
+        editor = monaco.editor.create(document.getElementById('editor'), {value: '', language: 'javascript', theme: 'vs-dark', automaticLayout: true, minimap: {enabled: false}});
+      });
+
+      // helper API
+      async function api(path, opts = {}) {
+        const r = await fetch(path, opts);
+        if (!r.ok) throw new Error(`${path} failed: ${r.status}`);
+        return r.json();
+      }
+
+      // display breadcrumb
+      function updateBreadcrumb() {
+        const bc = document.getElementById('breadcrumb');
+        const parts = currentDir === '.' ? [] : currentDir.split('/').filter(Boolean);
+        let html = '<button data-up="1">/</button> ';
+        let cur = '';
+        html += '<span style="color:#9aa0a6">/' + (parts.length ? parts.join('/') : '') + '</span>';
+        bc.innerHTML = html;
+      }
+
+      // refresh explorer listing for currentDir
+      async function refreshExplorer() {
+        try {
+          const json = await api(`/api/files?path=${encodeURIComponent(currentDir)}`);
+          updateBreadcrumb();
+          const list = document.getElementById('fileList'); list.innerHTML = '';
+          for (const it of json.items) {
+            const div = document.createElement('div'); div.className = 'file';
+            div.textContent = it.name + (it.isDir ? '/' : '');
+            div.onclick = () => {
+              if (it.isDir) {
+                currentDir = currentDir === '.' ? it.name : `${currentDir}/${it.name}`;
+                refreshExplorer();
+                // reconnect terminal to new dir
+                connectTerm();
+              } else {
+                loadFile(currentDir === '.' ? it.name : `${currentDir}/${it.name}`);
+              }
+            };
+            list.appendChild(div);
+          }
+        } catch (err) {
+          console.error('Explorer error', err);
+          document.getElementById('fileList').textContent = 'Error: ' + err.message;
+        }
+      }
+
+      async function loadFile(rel) {
+        try {
+          const json = await api(`/api/file?path=${encodeURIComponent(rel)}`);
+          window.currentFile = rel;
+          // basic language by extension
+          const ext = rel.split('.').pop().toLowerCase();
+          const langMap = {
+            js: {monaco: 'javascript', id: 63},
+            py: {monaco: 'python', id: 71},
+            c: {monaco: 'c', id: 50},
+            cpp: {monaco: 'cpp', id: 54},
+            java: {monaco: 'java', id: 62},
+            go: {monaco: 'go', id: 78},
+            rb: {monaco: 'ruby', id: 91},
+            cs: {monaco: 'csharp', id: 52},
+            php: {monaco: 'php', id: 60},
+            rs: {monaco: 'rust', id: 68}
+          };
+
+          const selected = langMap[ext] || langMap.js;
+          monaco.editor.setModelLanguage(editor.getModel(), selected.monaco);
+          editor.setValue(json.content);
+          editor.focus();
+        } catch (e) {alert('Failed to open file: ' + e.message);}
+      }
+
+      // Buttons wiring
+      document.getElementById('btnRefresh').onclick = refreshExplorer;
+      document.getElementById('btnUp').onclick = () => {
+        if (currentDir === '.') return;
+        const up = currentDir.split('/').slice(0, -1).join('/');
+        currentDir = up === '' ? '.' : up;
+        refreshExplorer(); connectTerm();
+      };
+
+      document.getElementById('btnCreate').onclick = async () => {
+        const name = document.getElementById('newName').value.trim();
+        const type = document.getElementById('newType').value;
+        if (!name) return alert('Enter name');
+        const rel = currentDir === '.' ? name : `${currentDir}/${name}`;
+        if (type === 'file') {
+          await api('/api/file', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({path: rel, content: ''})});
+        } else {
+          await api('/api/mkdir', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({path: rel})});
+        }
+        document.getElementById('newName').value = '';
+        refreshExplorer();
+      };
+
+      document.getElementById('btnSave').onclick = async () => {
+        if (!window.currentFile) return alert('Open a file first');
+        const content = editor.getValue();
+        await api('/api/file', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({path: window.currentFile, content})});
+        refreshExplorer();
+      };
+
+      // Run with Judge0; show output in outputBox and optionally send to terminal
+      document.getElementById('btnRunJudge0').onclick = async () => {
+        if (!window.currentFile) return alert('Open a file first');
+        const source = editor.getValue();
+        const language_id = document.getElementById('language').value;
+        const stdin = document.getElementById('stdin').value || '';
+        const result = await api('/api/run-judge0', {
+          method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({source, language_id, stdin})
+        });
+        const output = (result.compile_output || '') + (result.stdout || '') + (result.stderr || '');
+        document.getElementById('outputBox').textContent = output || '(no output)';
+        // also write nicely to terminal
+        // if (ws && ws.readyState === WebSocket.OPEN) {
+        //   const clean = String(output).replace(/\r/g,'').replace(/\n/g,'\n');
+        //   ws.send(`echo ${JSON.stringify('\n=== Judge0 Output ===\n'+clean+'\n')}\n`);
+        // }
+      };
+
+      // initial refresh
+      refreshExplorer();
+    })();
+
+    // --- Terminal resize logic ---
+(() => {
+  const wrapper = document.getElementById('terminalWrapper');
+  const handle = document.getElementById('terminalResizeHandle');
+  let startY, startHeight;
+
+  handle.addEventListener('mousedown', (e) => {
+    startY = e.clientY;
+    startHeight = parseInt(window.getComputedStyle(wrapper).height, 10);
+    document.body.style.userSelect = 'none'; // prevent text selection
+    document.addEventListener('mousemove', resize);
+    document.addEventListener('mouseup', stopResize);
   });
-  ws.addEventListener('message', ev => term.write(ev.data));
-  ws.addEventListener('close', () => term.write('\r\n\x1b[31mConnection closed\x1b[0m\r\n'));
-  ws.addEventListener('error', err => console.error('Terminal WS error', err));
 
-  if (typeof term.onData === 'function') term.onData(d => { if (ws.readyState === WebSocket.OPEN) ws.send(d); });
-  else if (typeof term.onKey === 'function') term.onKey(ev => { if (ws.readyState === WebSocket.OPEN) ws.send(ev.key); });
-
-  window.addEventListener('resize', () => {
-    if (fitAddon && typeof fitAddon.fit === 'function') { try { fitAddon.fit(); } catch(e) {} }
-    if (ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ type: 'resize', cols: term.cols || 80, rows: term.rows || 24 }));
-  });
-
-  // Monaco setup
-  require.config({ paths: { vs: 'https://unpkg.com/monaco-editor@0.39.0/min/vs' }});
-  require(['vs/editor/editor.main'], function () {
-    window.editor = monaco.editor.create(document.getElementById('editor'), {
-      value: '// select a file and open it from the explorer\\n',
-      language: 'javascript',
-      theme: 'vs-dark',
-      automaticLayout: true,
-      minimap: { enabled: false }
-    });
-    try { window.editor.focus(); } catch (e) {}
-    refreshExplorer().catch(err => console.warn('Explorer refresh failed:', err));
-  });
-
-  async function api(path, opts = {}) {
-    const res = await fetch(path, opts);
-    if (!res.ok) throw new Error(`API ${path} failed: ${res.status}`);
-    return res.json();
+  function resize(e) {
+    const newHeight = startHeight - (e.clientY - startY);
+    wrapper.style.height = Math.min(Math.max(newHeight, 100), window.innerHeight * 0.7) + 'px';
+    if (window.term) window.term.fit?.(); // adjust xterm if supported
   }
 
-  async function refreshExplorer() {
-    const json = await api(`/api/files?project=${encodeURIComponent(project)}`);
-    const list = document.getElementById('fileList');
-    list.innerHTML = '';
-    for (const it of json.items) {
-      const div = document.createElement('div');
-      div.className = 'file';
-      div.textContent = it.name + (it.isDir ? '/' : '');
-      div.onclick = () => { if (it.isDir) loadFolder(it.name); else loadFile(it.name); };
-      list.appendChild(div);
-    }
+  function stopResize() {
+    document.body.style.userSelect = '';
+    document.removeEventListener('mousemove', resize);
+    document.removeEventListener('mouseup', stopResize);
   }
-
-  async function loadFolder(folderName) {
-    const json = await api(`/api/files?project=${encodeURIComponent(project)}&path=${encodeURIComponent(folderName)}`);
-    const list = document.getElementById('fileList');
-    list.innerHTML = `<div style="font-weight:bold">/${folderName}</div>`;
-    for (const it of json.items) {
-      const div = document.createElement('div');
-      div.className = 'file';
-      div.textContent = it.name + (it.isDir ? '/' : '');
-      div.onclick = () => { if (it.isDir) loadFolder(folderName + '/' + it.name); else loadFile(folderName + '/' + it.name); };
-      list.appendChild(div);
-    }
-  }
-
-  async function loadFile(relPath) {
-    const json = await api(`/api/file?project=${encodeURIComponent(project)}&path=${encodeURIComponent(relPath)}`);
-    window.currentFile = relPath;
-    const ext = relPath.split('.').pop();
-    const lang = ext === 'py' ? 'python' : (ext === 'c' ? 'c' : 'javascript');
-    if (window.editor) {
-      monaco.editor.setModelLanguage(window.editor.getModel(), lang);
-      window.editor.setValue(json.content);
-      try { window.editor.focus(); } catch(e) {}
-    } else {
-      alert('Editor not ready');
-    }
-  }
-
-  document.getElementById('btnRefresh').onclick = () => refreshExplorer().catch(e=>console.warn(e));
-  document.getElementById('btnNewFile').onclick = async () => {
-    const name = document.getElementById('newName').value.trim();
-    if (!name) return alert('Enter name');
-    await api('/api/file', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ project, path: name, content: '' }) });
-    refreshExplorer();
-  };
-  document.getElementById('btnNewDir').onclick = async () => {
-    const name = document.getElementById('newName').value.trim();
-    if (!name) return alert('Enter name');
-    await api('/api/mkdir', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ project, path: name }) });
-    refreshExplorer();
-  };
-  document.getElementById('btnSave').onclick = async () => {
-    if (!window.currentFile) return alert('Open a file first');
-    const content = window.editor.getValue();
-    await api('/api/file', { method: 'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ project, path: window.currentFile, content }) });
-    // alert('Saved');
-    refreshExplorer();
-  };
-
-  // Judge0 run button remains
-  document.getElementById('btnRunJudge0').onclick = async () => {
-    if (!window.currentFile) return alert('Open a file first');
-    const source = window.editor.getValue();
-    const language_id = document.getElementById('language').value;
-    const stdin = document.getElementById('stdin').value || '';
-    const result = await api('/api/run-judge0', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ project, source, language_id, stdin }) });
-    const output = (result.compile_output || '') + (result.stdout || '') + (result.stderr || '');
-    if (ws.readyState === WebSocket.OPEN) ws.send(`echo -e ${JSON.stringify(output)}\n`);
-    // alert('Judge0 finished. Check terminal and console for output.');
-    console.log(result);
-  };
 })();
-</script>
+  </script>
 </body>
+
 </html>
